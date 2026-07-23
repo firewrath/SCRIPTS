@@ -204,6 +204,8 @@ end)
 
 local Window = Library:CreateWindow({
     Title = "Posral",
+	SidebarCompacted = true,
+	CornerRadius = 12.5,
     Footer = "version: Иди нахуй не читай",
     NotifySide = "Right",
 })
@@ -1984,6 +1986,82 @@ box:AddToggle("EnableGrabAntiKick", {
             end)
         end
     end
+})
+
+	box:AddCheckbox("LoopSnowballKick", { 
+    Text = "Loop-Snowball", 
+    Default = false, 
+    Callback = function(on) 
+        _G.RagdollEnabled = on 
+        local Players = game:GetService("Players") 
+        local RS = game:GetService("ReplicatedStorage") 
+        local Workspace = game:GetService("Workspace") 
+        local RunService = game:GetService("RunService") 
+        local Player = Players.LocalPlayer 
+        local SpawnRemote = RS:WaitForChild("MenuToys"):WaitForChild("SpawnToyRemoteFunction") 
+
+        local GE = RS:FindFirstChild("GrabEvents")
+        local SetNetOwner = GE and GE:FindFirstChild("SetNetworkOwner")
+
+        task.spawn(function() 
+            while _G.RagdollEnabled do 
+                local rawValue = Options.TargetPlayer and Options.TargetPlayer.Value
+                local target = nil
+
+                if type(rawValue) == "string" and rawValue ~= "" and rawValue ~= "None" and rawValue ~= "..." then
+                    target = Players:FindFirstChild(rawValue)
+                    if not target then
+                        for _, p in ipairs(Players:GetPlayers()) do
+                            if string.find(rawValue, p.Name) or string.find(rawValue, p.DisplayName) then
+                                target = p
+                                break
+                            end
+                        end
+                    end
+                end
+                
+                if target and target ~= Player then
+                    local tChar = target.Character 
+                    
+                    local hitPart = tChar and (
+                        tChar:FindFirstChild("HumanoidRootPart") or 
+                        tChar:FindFirstChild("Torso") 
+                    )
+                    
+                    if hitPart and Player.Character and Player.Character:FindFirstChild("Head") then 
+                        task.spawn(function() 
+                            pcall(function() 
+                                local spawnPos = Player.Character.Head.CFrame * CFrame.new(0, 12, 20) 
+                                local SnowModel = SpawnRemote:InvokeServer("BallSnowball", spawnPos, Vector3.new(0, -10, 0)) 
+                                local folder = Workspace:FindFirstChild(Player.Name .. "SpawnedInToys") 
+                                
+                                if folder then 
+                                    for _, snowball in ipairs(folder:GetChildren()) do 
+                                        if snowball.Name == "BallSnowball" then 
+                                            local part = snowball:FindFirstChild("SoundPart") or snowball.PrimaryPart or snowball:FindFirstChildWhichIsA("BasePart") 
+                                            if part then 
+                                                if SetNetOwner then
+                                                    SetNetOwner:FireServer(part, part.CFrame)
+                                                end
+
+                                                part.CFrame = CFrame.new(hitPart.Position + Vector3.new(0, 2, 0)) * part.CFrame.Rotation
+                                                part.AssemblyLinearVelocity = Vector3.new(0, -25, 0)
+
+                                                firetouchinterest(part, hitPart, 0) 
+                                                RunService.Heartbeat:Wait() 
+                                                firetouchinterest(part, hitPart, 1) 
+                                            end 
+                                        end 
+                                    end 
+                                end 
+                            end) 
+                        end) 
+                    end 
+                end 
+                task.wait(0.05) 
+            end 
+        end) 
+    end 
 })
 
 end
