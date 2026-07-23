@@ -1787,14 +1787,14 @@ box:AddToggle("ApplyMethodGrab", {
                                     kickbp = Instance.new("BodyPosition")
                                     kickbp.Parent = Sets.HRP
                                     kickbp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                                    kickbp.D = 200
+                                    kickbp.D = 500
                                     kickbp.Position = HRP.Position + Vector3.new(0,5,0)
                                 end
                                 if not kickbg or kickbg.Parent ~= Sets.HRP then
                                     kickbg = Instance.new("BodyGyro")
                                     kickbg.Parent = Sets.HRP
                                     kickbg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-                                    kickbp.D = 100
+                                    kickbp.D = 50
                                     kickbg.CFrame = CFrame.new(0, 0, 0)
                                 end
                                 task.spawn(function()
