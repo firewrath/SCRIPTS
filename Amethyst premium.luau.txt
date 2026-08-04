@@ -1,6 +1,6 @@
 -- ts file was generated with delusion v2 | bat i love u 
 local Env = getfenv();
-local solarisui = loadstring(game:HttpGet("https://raw.githubusercontent.com/katnaa-debug/solarisobf/refs/heads/main/solarisui.lua"))();
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/katnaa-debug/SolarisUI/refs/heads/main/Library1.lua"))();
 loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))();
 local LocalPlayer = r25.Players.LocalPlayer;
 local list = {
