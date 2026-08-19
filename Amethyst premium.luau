@@ -3430,9 +3430,7 @@ local TargetTab = Window:CreateTab("Target")
 local playersInPlotsFolder = S.Workspace:WaitForChild("PlotItems"):WaitForChild("PlayersInPlots")
 
 local function IsPlayerInPlot(player)
-    if not player then
-        return false
-    end
+    if not player then return false end
     return playersInPlotsFolder:FindFirstChild(player.Name) ~= nil
 end
 
@@ -3446,9 +3444,7 @@ local function ClearTargetGroup(groupName)
     if targetData[groupName] then
         for _, obj in pairs(targetData[groupName]) do
             if obj and typeof(obj) == "Instance" then
-                pcall(function()
-                    obj:Destroy()
-                end)
+                pcall(function() obj:Destroy() end)
             end
         end
         targetData[groupName] = {}
@@ -3463,25 +3459,21 @@ local function TrackInstance(groupName, obj)
     return obj
 end
 
-task.wait(0.5)
 TargetTab:CreateSection("Select Player")
-
-local function PlayerLabel(player)
-    local display = player.DisplayName
-    local name = player.Name
-    if display and display ~= "" and display ~= name then
-        return display .. " (" .. name .. ")" .. (IsPlayerInPlot(player) and " [PLOT]" or "")
-    else
-        return name .. (IsPlayerInPlot(player) and " [PLOT]" or "")
-    end
-end
 
 local function GetPlayerList()
     local items = {}
     local mapping = {}
     for _, player in ipairs(S.Players:GetPlayers()) do
         if player ~= LocalPlayer then
-            local label = PlayerLabel(player)
+            local display = player.DisplayName
+            local name = player.Name
+            local label
+            if display and display ~= "" and display ~= name then
+                label = display .. " (" .. name .. ")" .. (IsPlayerInPlot(player) and " [PLOT]" or "")
+            else
+                label = name .. (IsPlayerInPlot(player) and " [PLOT]" or "")
+            end
             table.insert(items, label)
             mapping[label] = player
         end
@@ -3491,61 +3483,99 @@ end
 
 local targetPlayerName = ""
 local targetPlayer = nil
+local playerMapping = {}
 
-local function RefreshPlayerDropdown()
-    local items, mapping = GetPlayerList()
-    if targetDropdown then
-        targetDropdown:Refresh(items, true)
-        if Features.Selected.currentPlayer and Features.Selected.currentPlayer.Parent then
-            targetDropdown:Set(PlayerLabel(Features.Selected.currentPlayer))
-        end
-    end
-end
-
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        RefreshPlayerDropdown()
-    end
-end)
-
+-- СОЗДАЁМ ДРОПДАУН С ПРАВИЛЬНОЙ ИНИЦИАЛИЗАЦИЕЙ
 local targetDropdown = TargetTab:CreateDropdown({
     Name = "Select Target Player",
     Items = {},
     Default = "",
     Callback = function(selected)
-        if selected == "" then
+        if selected == "" or not selected then
             Features.Selected.kickPlayer = nil
             Features.Selected.currentPlayer = nil
             return
         end
-        local player = GetPlayerList()[selected]
+        local player = playerMapping[selected]
         if player then
             Features.Selected.kickPlayer = player
             Features.Selected.currentPlayer = player
-            Notify("Target Selected", "Target: " .. PlayerLabel(player), 2)
+            Notify("Target Selected", "Target: " .. (player.DisplayName or player.Name), 2)
             PlayEnableSound()
         end
     end
 })
-RefreshPlayerDropdown()
 
-S.Players.PlayerAdded:Connect(function()
+-- ФУНКЦИЯ ОБНОВЛЕНИЯ СПИСКА
+local function RefreshPlayerDropdown()
+    local items, mapping = GetPlayerList()
+    playerMapping = mapping
+    
+    -- Сохраняем текущий выбор
+    local currentSelection = nil
+    if Features.Selected.currentPlayer then
+        for label, player in pairs(mapping) do
+            if player == Features.Selected.currentPlayer then
+                currentSelection = label
+                break
+            end
+        end
+    end
+    
+    -- Обновляем дропдаун
+    if targetDropdown then
+        targetDropdown:Refresh(items, true)
+        if currentSelection and mapping[currentSelection] then
+            targetDropdown:Set(currentSelection)
+        elseif #items > 0 then
+            targetDropdown:Set(items[1])
+        end
+    end
+end
+
+-- ПЕРВОНАЧАЛЬНОЕ ЗАПОЛНЕНИЕ
+task.spawn(function()
     task.wait(0.5)
     RefreshPlayerDropdown()
 end)
+
+-- ОБНОВЛЕНИЕ ПРИ ДОБАВЛЕНИИ/УДАЛЕНИИ ИГРОКОВ
+S.Players.PlayerAdded:Connect(function()
+    task.wait(0.3)
+    RefreshPlayerDropdown()
+end)
+
 S.Players.PlayerRemoving:Connect(function(player)
+    task.wait(0.3)
     RefreshPlayerDropdown()
     if Features.Selected.currentPlayer == player then
         Features.Selected.kickPlayer = nil
         Features.Selected.currentPlayer = nil
-        targetDropdown:Set("")
+        if targetDropdown then
+            targetDropdown:Set("")
+        end
         Notify("Target", "Selected player left the game", 2)
     end
 end)
 
-playersInPlotsFolder.ChildAdded:Connect(RefreshPlayerDropdown)
-playersInPlotsFolder.ChildRemoved:Connect(RefreshPlayerDropdown)
+-- ОБНОВЛЕНИЕ ПРИ ИЗМЕНЕНИИ В PLOT
+playersInPlotsFolder.ChildAdded:Connect(function()
+    task.wait(0.2)
+    RefreshPlayerDropdown()
+end)
+
+playersInPlotsFolder.ChildRemoved:Connect(function()
+    task.wait(0.2)
+    RefreshPlayerDropdown()
+end)
+
+-- ПЕРИОДИЧЕСКОЕ ОБНОВЛЕНИЕ (НА ВСЯКИЙ СЛУЧАЙ)
+task.spawn(function()
+    while true do
+        task.wait(5)
+        RefreshPlayerDropdown()
+    end
+end)
 
 local function IsTargetAlive(player)
     return IsPlayerInPlot(player)
