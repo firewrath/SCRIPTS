@@ -1,5 +1,6 @@
--- ver: 01.02.26
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/katnaa-debug/SolarisUI/refs/heads/main/Library1.lua"))()
+getgenv().gethui = function() return game.CoreGui end
+
+local UI = loadstring(game:HttpGet("https://raw.githubusercontent.com/katnaa-debug/SolarisUI/refs/heads/main/Library1.lua"))()
 loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()
 local S = {
     Players = game:GetService("Players"),
