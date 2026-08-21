@@ -5,6 +5,7 @@
 		"megapuz_URAL",
 		"l0ve_my32",
         "enigmaezkaa",
+        "RevengeTest1",
 	}
 
 	local SecretKey = "kotakbasclientpena1488"
@@ -3938,7 +3939,7 @@ NoBlobGroup:AddToggle("ApplyMethodGrab", {
                                         local R_Det = blob:FindFirstChild("RightDetector")
                                         
                                         tHRP.CFrame = HRP.CFrame
-                                        task.wait(0.2)
+                                        task.wait(0.05)
                                         repeat
                                             task.wait()
                                             if R_Det then
@@ -3947,13 +3948,13 @@ NoBlobGroup:AddToggle("ApplyMethodGrab", {
                                             end
                                         until isnetworkowner(tHRP)
                                         
-                                        task.wait(0.2)
+                                        task.wait(0.05)
                                         tHRP.CFrame = pos * offset
                                         HRP.CFrame = pos
                                         if inv:FindFirstChild("cringe") then
                                             RS.MenuToys.DestroyToy:FireServer(inv.cringe)
                                         end
-                                        task.wait(0.5)
+                                        task.wait(0.05)
                                     end
                                 end
                             end
@@ -3962,11 +3963,11 @@ NoBlobGroup:AddToggle("ApplyMethodGrab", {
                                 if (tHRP.Position - HRP.Position).Magnitude >= 29 and tChar.Parent == workspace then
                                     task.wait(0.1)
                                     HRP.CFrame = tHRP.CFrame 
-                                    task.wait(0.2)
+                                    task.wait(0.05)
                                     sno(tHRP)
                                     task.wait()
                                     HRP.CFrame = pos
-                                    task.wait(0.2)
+                                    task.wait(0.05)
                                     for i,v in pairs(tChar:GetChildren()) do
                                         if v:IsA("Part") and v.Name ~= "Humanoid" then
                                             v.CFrame = pos * offset
@@ -3985,7 +3986,7 @@ NoBlobGroup:AddToggle("ApplyMethodGrab", {
                                         local sp = PalletForRagdoll.SoundPart
                                         sp.AssemblyLinearVelocity = Vector3.new(0, 1000, 0)
                                         sp.CFrame = tHRP.CFrame
-                                        task.wait(0.05)
+                                        task.wait(0.01)
                                         sp.CFrame = HRP.CFrame * CFrame.new(0, 1000, 0)
                                     end
                                 end)
@@ -3994,8 +3995,8 @@ NoBlobGroup:AddToggle("ApplyMethodGrab", {
                                     kickbp = Instance.new("BodyPosition")
                                     kickbp.Parent = tHRP
                                     kickbp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-                                    kickbp.D = 10000
-                                    kickbp.P = 10000
+                                    kickbp.D = 100000
+                                    kickbp.P = 100000
                                 end
                                 kickbp.Position = HRP.Position + Vector3.new(offset.X, offset.Y, offset.Z)
                                 
