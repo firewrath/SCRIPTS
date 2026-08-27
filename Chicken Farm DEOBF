@@ -1,0 +1,426 @@
+-- deobfuscated by CreepySleep
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+-- Silent Anti-AFK
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+local chunk = loadstring(game:HttpGet("https://raw.githubusercontent.com/test12for/BF-by-CongDanh/refs/heads/main/Libv2_non_release.lua"))()
+local Window = chunk:CreateWindow({
+    Title = "Loffy Hub | Chicken Farm",
+    Subtitle = "Join My Discord gg/55ep7Wf5D",
+    LogoText = "L",
+    AvatarImage = "rbxassetid://81175980653693",
+    AccentColor = Color3.fromRGB(114, 137, 218),
+    ToggleKey = Enum.KeyCode.RightShift,
+    TutorialMode = false,
+})
+
+-- Teleport Logic
+local function TweenTo(targetCFrame)
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    
+    local hrp = character.HumanoidRootPart
+    hrp.Anchored = true
+    
+    local distance = (hrp.Position - targetCFrame.Position).Magnitude
+    local duration = distance / 150
+    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
+    
+    local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
+    tween:Play()
+    tween.Completed:Wait()
+    
+    hrp.Velocity = Vector3.zero
+    hrp.RotVelocity = Vector3.zero
+end
+
+-- Base Locations
+local BaseLocations = {
+    Vector3.new(97.16, 24.01, 50.29),
+    Vector3.new(-4.01, 23.94, 118.18),
+    Vector3.new(-107.03, 24, 60.34),
+    Vector3.new(-113.61, 24, -64.36),
+    Vector3.new(-2.2, 24, -131.86),
+    Vector3.new(100.31, 24, -70.23),
+}
+
+local function GetClosestBase(currentPosition)
+    local closestPos = BaseLocations[1]
+    local shortestDist = (currentPosition - closestPos).Magnitude
+    
+    for i = 2, #BaseLocations do
+        local dist = (currentPosition - BaseLocations[i]).Magnitude
+        if dist < shortestDist then
+            shortestDist = dist
+            closestPos = BaseLocations[i]
+        end
+    end
+    return closestPos
+end
+
+-- Remote Utility
+local function InvokePaperRemote(action, arg)
+    local paper = ReplicatedStorage:FindFirstChild("Paper")
+    if paper then
+        local remote = paper:FindFirstChild("Remotes") and paper.Remotes:FindFirstChild("__remotefunction")
+        if remote then
+            if arg then
+                return pcall(function() return remote:InvokeServer(action, arg) end)
+            else
+                return pcall(function() return remote:InvokeServer(action) end)
+            end
+        end
+    end
+    return false
+end
+
+-- UI Setup
+local TabMain = Window:CreateTab({ Name = "Main", Icon = "" })
+local TabUpgrades = Window:CreateTab({ Name = "Upgrades", Icon = "" })
+
+local SubEggFarm = TabMain:CreateSubTab({ Name = "Egg Farm" })
+local SubSellEggs = TabMain:CreateSubTab({ Name = "Sell Eggs" })
+local SubCollectCash = TabMain:CreateSubTab({ Name = "Collect Cash" })
+local SubLuckyBlock = TabMain:CreateSubTab({ Name = "Lucky Block" })
+local SubAutoMerge = TabMain:CreateSubTab({ Name = "Auto Merge" })
+local SubBuyChickens = TabMain:CreateSubTab({ Name = "Buy Chickens" })
+local SubRebirth = TabMain:CreateSubTab({ Name = "Rebirth" })
+
+-- Egg Farm Settings
+SubEggFarm:CreateSection("--- Egg Collection Settings ---")
+local AutoEggs = false
+SubEggFarm:CreateToggle({
+    Name = "Enable Auto Collect Eggs",
+    Description = "Collect eggs -> Fly up -> Return to CLOSEST base",
+    Default = false,
+    Callback = function(state)
+        AutoEggs = state
+        if not AutoEggs then
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                char.HumanoidRootPart.Anchored = false
+            end
+            return
+        end
+        
+        task.spawn(function()
+            while AutoEggs do
+                local char = LocalPlayer.Character
+                if char and char:FindFirstChild("HumanoidRootPart") then
+                    local hrp = char.HumanoidRootPart
+                    if workspace:FindFirstChild("Eggs") then
+                        local eggs = workspace.Eggs:GetChildren()
+                        if #eggs > 0 then
+                            -- Fly up before collecting
+                            TweenTo(CFrame.new(Vector3.new(hrp.Position.X, 22.5, hrp.Position.Z)))
+                            hrp.Anchored = false
+                            
+                            for _, egg in pairs(eggs) do
+                                if not AutoEggs then break end
+                                if egg:IsA("BasePart") or egg:IsA("UnionOperation") then
+                                    hrp.CFrame = egg.CFrame
+                                    task.wait(0.1)
+                                elseif egg:IsA("Model") and egg.PrimaryPart then
+                                    hrp.CFrame = egg.PrimaryPart.CFrame
+                                    task.wait(0.1)
+                                end
+                            end
+                        end
+                    end
+                    -- Return to closest base
+                    if AutoEggs then
+                        TweenTo(CFrame.new(GetClosestBase(hrp.Position)))
+                        task.wait(1)
+                    end
+                else
+                    task.wait(1)
+                end
+            end
+        end)
+    end,
+})
+
+-- Sell Eggs Settings
+SubSellEggs:CreateSection("--- Egg Selling Settings ---")
+local TargetMultiplier = 0
+local AutoSellMulti = false
+local AutoSellAlways = false
+local ToggleSellMulti, ToggleSellAlways
+
+SubSellEggs:CreateInput({
+    Name = "Multiplier Target for Auto Sell",
+    Placeholder = "Enter number (e.g., 0 or 1.5)...",
+    Callback = function(text) TargetMultiplier = tonumber(text) or 0 end,
+})
+
+ToggleSellMulti = SubSellEggs:CreateToggle({
+    Name = "Auto Sell (Check Multiplier)",
+    Description = "Sell only when the target Multiplier is reached",
+    Default = false,
+    Callback = function(state)
+        AutoSellMulti = state
+        if AutoSellMulti and AutoSellAlways then
+            AutoSellAlways = false
+            pcall(function() ToggleSellAlways:Set(false) end)
+        end
+    end,
+})
+
+ToggleSellAlways = SubSellEggs:CreateToggle({
+    Name = "Auto Sell (Continuous)",
+    Description = "Sell continuously IGNORING Multiplier",
+    Default = false,
+    Callback = function(state)
+        AutoSellAlways = state
+        if AutoSellAlways and AutoSellMulti then
+            AutoSellMulti = false
+            pcall(function() ToggleSellMulti:Set(false) end)
+        end
+    end,
+})
+
+SubSellEggs:CreateButton({
+    Name = "Sell Eggs (Once)",
+    Callback = function() InvokePaperRemote("Deposit Eggs") end,
+})
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if AutoSellAlways then
+            InvokePaperRemote("Deposit Eggs")
+        elseif AutoSellMulti then
+            local values = ReplicatedStorage:FindFirstChild("Values")
+            if values and values:FindFirstChild("EggMultiplier") and values.EggMultiplier.Value >= TargetMultiplier then
+                InvokePaperRemote("Deposit Eggs")
+            end
+        end
+    end
+end)
+
+-- Auto Collect Cash Settings
+SubCollectCash:CreateSection("--- Auto Collect Cash ---")
+local AutoCollectCash = false
+SubCollectCash:CreateToggle({
+    Name = "Auto Collect Cash",
+    Description = "Automatically collect cash every second",
+    Default = false,
+    Callback = function(state)
+        AutoCollectCash = state
+        if AutoCollectCash then
+            task.spawn(function()
+                while AutoCollectCash do
+                    task.wait(1)
+                    InvokePaperRemote("Collect Cash")
+                end
+            end)
+        end
+    end,
+})
+
+SubCollectCash:CreateButton({
+    Name = "Collect Cash (Once)",
+    Callback = function() InvokePaperRemote("Collect Cash") end,
+})
+
+-- Lucky Block Settings
+SubLuckyBlock:CreateSection("--- Open Lucky Block ---")
+local AutoLuckyBlock = false
+SubLuckyBlock:CreateToggle({
+    Name = "Auto Open Lucky Block",
+    Description = "Open a box every 1 second",
+    Default = false,
+    Callback = function(state)
+        AutoLuckyBlock = state
+        if AutoLuckyBlock then
+            task.spawn(function()
+                while AutoLuckyBlock do
+                    task.wait(1)
+                    InvokePaperRemote("Open Lucky Block")
+                end
+            end)
+        end
+    end,
+})
+
+SubLuckyBlock:CreateButton({
+    Name = "Open Lucky Block (Once)",
+    Callback = function() InvokePaperRemote("Open Lucky Block") end,
+})
+
+-- Merge Chickens Settings
+SubAutoMerge:CreateSection("--- Merge Chickens ---")
+local AutoMerge = false
+SubAutoMerge:CreateToggle({
+    Name = "Auto Merge Chickens",
+    Description = "Automatically merge chickens continuously",
+    Default = false,
+    Callback = function(state)
+        AutoMerge = state
+        if AutoMerge then
+            task.spawn(function()
+                while AutoMerge do
+                    task.wait(1)
+                    InvokePaperRemote("Merge Chickens")
+                end
+            end)
+        end
+    end,
+})
+
+SubAutoMerge:CreateButton({
+    Name = "Merge Chickens (Once)",
+    Callback = function() InvokePaperRemote("Merge Chickens") end,
+})
+
+-- Buy Chickens Settings
+SubBuyChickens:CreateSection("--- Auto Buy Chickens ---")
+local BuyAmount = 1
+SubBuyChickens:CreateDropdown({
+    Name = "Select Chicken Amount",
+    Items = { "1", "5", "25", "100" },
+    Default = "1",
+    Callback = function(text) BuyAmount = tonumber(text) or 1 end,
+})
+
+local AutoBuy = false
+SubBuyChickens:CreateToggle({
+    Name = "Auto Buy Chickens",
+    Description = "Automatically buy based on selected amount",
+    Default = false,
+    Callback = function(state)
+        AutoBuy = state
+        if AutoBuy then
+            task.spawn(function()
+                while AutoBuy do
+                    task.wait(1)
+                    InvokePaperRemote("Buy Chickens", BuyAmount)
+                end
+            end)
+        end
+    end,
+})
+
+SubBuyChickens:CreateButton({
+    Name = "Buy Chickens (Once)",
+    Callback = function() InvokePaperRemote("Buy Chickens", BuyAmount) end,
+})
+
+-- Rebirth Settings (Note: This function was broken in the original source)
+SubRebirth:CreateSection("--- Auto Rebirth Settings ---")
+
+local function ParseSuffix(text)
+    local number = tonumber(string.match(text, "[%d%.]+"))
+    local suffix = string.match(text, "[A-Za-z]+")
+    
+    if not number then return 0 end
+    if not suffix then return number end
+    
+    suffix = string.upper(suffix)
+    if suffix == "K" then return number * 1000
+    elseif suffix == "M" then return number * 1000000
+    elseif suffix == "B" then return number * 1000000000
+    elseif suffix == "T" then return number * 1000000000000
+    end
+    
+    return number
+end
+
+local function HandleRebirth()
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not playerGui then return end
+    
+    -- The original script had placeholder names and broken undefined variables here.
+    -- This section is cleaned up to match the intended logic, but will fail unless you input the correct UI names.
+    local success, uiElement = pcall(function()
+        return playerGui:WaitForChild("SỬA_TÊN_UI_Ở_ĐÂY", 3)
+            :WaitForChild("SỬA_TÊN_FRAME", 3)
+            :WaitForChild("SỬA_TÊN_TEXTLABEL", 3)
+    end)
+    
+    if success and uiElement then
+        local currentStr, maxStr = string.match(uiElement.Text, "%$([%d%.%a]+)%s*/%s*([%d%.%a]+)")
+        if currentStr and maxStr then
+            local currentVal = ParseSuffix(currentStr)
+            local maxVal = ParseSuffix(maxStr)
+            
+            if currentVal >= maxVal then
+                print("[+] Đã đủ tiền! Đang gửi lệnh Rebirth lên server...")
+                local invokeSuccess, result = InvokePaperRemote("Rebirth")
+                
+                if invokeSuccess then
+                    print("[+] Lệnh Rebirth thành công!")
+                    Window.Notify({ Title = "Rebirth", Content = "Thành công!", Type = "Success", Duration = 2 })
+                    task.wait(1)
+                else
+                    warn("[-] Lỗi khi gọi Remote Rebirth: ", tostring(result))
+                end
+            end
+        end
+    else
+        warn("Không thể tìm thấy UI TextLabel! Nhớ sửa tên UI bằng Dex Explorer trong script.")
+    end
+end
+
+local AutoRebirth = false
+SubRebirth:CreateToggle({
+    Name = "Auto Rebirth",
+    Description = "Automatically Rebirth when conditions are met",
+    Default = false,
+    Callback = function(state)
+        AutoRebirth = state
+        if AutoRebirth then
+            task.spawn(function()
+                while AutoRebirth do
+                    pcall(HandleRebirth)
+                    task.wait(3)
+                end
+            end)
+        end
+    end,
+})
+
+SubRebirth:CreateButton({
+    Name = "Rebirth (Once)",
+    Callback = function() pcall(HandleRebirth) end,
+})
+
+-- Upgrades Settings
+TabUpgrades:CreateSection("--- Upgrade Egg Selling (Process Level) ---")
+local AutoUpgradeProcess = false
+TabUpgrades:CreateToggle({
+    Name = "Auto Upgrade Process Level",
+    Description = "Automatically upgrade continuously",
+    Default = false,
+    Callback = function(state)
+        AutoUpgradeProcess = state
+        if AutoUpgradeProcess then
+            task.spawn(function()
+                while AutoUpgradeProcess do
+                    task.wait(1)
+                    InvokePaperRemote("Upgrade Process Level")
+                end
+            end)
+        end
+    end,
+})
+
+TabUpgrades:CreateButton({
+    Name = "Upgrade (Once)",
+    Callback = function() InvokePaperRemote("Upgrade Process Level") end,
+})
+
+Window.Notify({
+    Title = "System",
+    Content = "Silent Anti AFK has been activated!",
+    Type = "Info",
+    Duration = 3,
+})
