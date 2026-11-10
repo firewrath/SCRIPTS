@@ -7458,6 +7458,338 @@ BAU:AddCheckbox("BlobmanAura", {
 	end,
 })
 
+local RA = {
+    enabled       = false,
+    selectedAura  = "Ragdoll",
+    radius        = 30,
+    ragdollThread = nil,
+    pallet        = nil,
+    soundPart     = nil,
+    holdBP        = nil,     
+    ownerThread   = nil,    
+    spawnThread   = nil,     
+}
+
+local RAU = Tabs.Auras:AddLeftGroupbox("Ragdoll Aura", "user-round")
+local sno2 = SetNetworkOwner
+local ps2  = P
+local lp2  = LocalPlayer
+
+local RA_PALLET_ITEM = "PalletLightBrown"
+local RA_HOLD_POS    = Vector3.new(0, 67167, 0)
+
+local function RA_ClearPallet()
+    if RA.pallet and RA.pallet.Parent then
+        pcall(function() DestroyT(RA.pallet) end)
+    end
+    RA.pallet    = nil
+    RA.soundPart = nil
+    RA.holdBP    = nil
+end
+
+local function RA_StartOwnershipLoop()
+    if RA.ownerThread then
+        task.cancel(RA.ownerThread)
+        RA.ownerThread = nil
+    end
+
+    RA.ownerThread = task.spawn(function()
+        while RA.pallet and RA.pallet.Parent do
+            local sp = RA.soundPart
+            if sp and sp.Parent then
+                pcall(function()
+                    sno2:FireServer(sp, sp.CFrame)
+                end)
+            else
+                RA.soundPart = RA.pallet and RA.pallet:FindFirstChild("SoundPart")
+            end
+            task.wait(0.1)
+        end
+        RA.ownerThread = nil
+    end)
+end
+
+local function RA_SetupSoundPart(sp)
+    if not sp then return end
+    pcall(function()
+        sp.CanTouch   = true
+        sp.CanQuery   = true
+        sp.CanCollide = false
+        sp.Anchored   = false
+        sp.Transparency = 1
+    end)
+
+    if not RA.holdBP or not RA.holdBP.Parent then
+        local bp = sp:FindFirstChild("RagdollHoldBP")
+        if not bp then
+            bp = Instance.new("BodyPosition")
+            bp.Name = "RagdollHoldBP"
+            bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bp.D = 100
+            bp.Parent = sp
+        end
+        bp.Position = RA_HOLD_POS
+        RA.holdBP = bp
+    else
+        RA.holdBP.Position = RA_HOLD_POS
+    end
+    sp.CFrame = CFrame.new(RA_HOLD_POS)
+end
+
+local function RA_SpawnPalletOnce()
+    if not char or not char:FindFirstChild("HumanoidRootPart") then
+        return nil
+    end
+
+    local hrp = char.HumanoidRootPart
+    local pallet = NewToy(RA_PALLET_ITEM, hrp.CFrame * CFrame.new(0, 15, 20))
+    if not pallet then return nil end
+
+    pallet.Name = "RagdollAuraPallet"
+    RA.pallet = pallet
+
+    local sp = pallet:WaitForChild("SoundPart", 3)
+    if sp then
+        RA.soundPart = sp
+        RA_SetupSoundPart(sp)
+    end
+
+    return pallet
+end
+
+local function RA_StartAutoSpawn()
+    if RA.spawnThread then return end
+    RA.spawnThread = task.spawn(function()
+        while RA.enabled do
+            if not RA.pallet or not RA.pallet.Parent then
+                RA.pallet = nil
+                RA.soundPart = nil
+                pcall(RA_SpawnPalletOnce)
+            end
+            task.wait(0.5)
+        end
+        RA.spawnThread = nil
+    end)
+end
+
+local function RA_StopAutoSpawn()
+    if RA.spawnThread then
+        task.cancel(RA.spawnThread)
+        RA.spawnThread = nil
+    end
+end
+
+
+local function RA_Ragdoll_Stop()
+    if RA.ragdollThread then
+        task.cancel(RA.ragdollThread)
+        RA.ragdollThread = nil
+    end
+
+    if RA.soundPart and RA.soundPart.Parent then
+        pcall(function()
+            RA.soundPart.CFrame = CFrame.new(0, 1e9, 0)
+        end)
+    end
+end
+
+local function RA_Ragdoll_Start()
+    if not RA.soundPart or not RA.soundPart.Parent then
+        Library:Notify({
+            Title = "Ragdoll Aura",
+            Description = "Pallet not ready — waiting auto respawm",
+            Time = 3,
+            BigIcon = "triangle-alert",
+        })
+        return false
+    end
+
+    local cFrame = RA.soundPart.CFrame
+
+    RA.ragdollThread = task.spawn(function()
+        while RA.enabled and RA.selectedAura == "Ragdoll" do
+            local soundPart = RA.soundPart
+            local character = lp2.Character
+
+            if soundPart and soundPart.Parent and character and character:FindFirstChild("HumanoidRootPart") then
+                local position = character.HumanoidRootPart.Position
+                local list  = {}
+                local count = 0
+
+                for _, player in ipairs(ps2:GetPlayers()) do
+                    if player ~= lp2 and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        local character2      = player.Character
+                        local humanoidRootPart = character2.HumanoidRootPart
+                        local humanoid        = character2:FindFirstChild("Humanoid")
+                        if humanoid and humanoid.Health > 0 then
+                            if (humanoidRootPart.Position - position).Magnitude <= RA.radius then
+                                count = count + 1
+                                table.insert(list, { hrp = humanoidRootPart, hum = humanoid })
+                            end
+                        end
+                    end
+                end
+
+                if count > 0 then
+                    local stepDelay
+                    if count == 1 then
+                        stepDelay = 0
+                    elseif count >= 24 then
+                        stepDelay = 1
+                    else
+                        stepDelay = (count - 1) / 23
+                    end
+
+                    for _, v in ipairs(list) do
+                        task.spawn(function()
+                            sno2:FireServer(v.hrp, v.hrp.CFrame)
+
+                            if v.hum:FindFirstChild("Ragdolled") and v.hum.Ragdolled.Value == false then
+                                local sp = RA.soundPart
+                                if sp and sp.Parent then
+                                    if RA.holdBP and RA.holdBP.Parent then
+                                        RA.holdBP.Position = v.hrp.Position + Vector3.new(0, 2, 0)
+                                    end
+                                    sp.CFrame = v.hrp.CFrame * CFrame.new(0, 2, 0)
+                                    task.wait(0.05)
+                                    if RA.holdBP and RA.holdBP.Parent then
+                                        RA.holdBP.Position = RA_HOLD_POS
+                                    end
+                                    if sp and sp.Parent then
+                                        sp.CFrame = CFrame.new(RA_HOLD_POS)
+                                    end
+                                    v.hum:ChangeState(Enum.HumanoidStateType.Physics)
+                                end
+                            end
+                        end)
+
+                        if stepDelay > 0 then
+                            task.wait(stepDelay)
+                        end
+                    end
+                end
+            end
+
+            task.wait()
+        end
+    end)
+
+    return true
+end
+
+RAU:AddSlider("RagdollAuraRadiusSlider", {
+    Text = "Radius",
+    Default = 30,
+    Min = 5,
+    Max = 60,
+    Rounding = 0,
+    Compact = true,
+    Callback = function(v) RA.radius = v end,
+})
+
+RAU:AddCheckbox("RagdollAuraAutoSpawnToggle", {
+    Text = "Auto Spawn Pallet",
+    Default = true,
+    Callback = function(state)
+        RA.autoSpawn = state
+        if state and RA.enabled then
+            RA_StartAutoSpawn()
+            RA_StartOwnershipLoop()
+        else
+            RA_StopAutoSpawn()
+        end
+    end,
+})
+
+RAU:AddCheckbox("RagdollAuraToggle", {
+    Text = "Enable Ragdoll Aura",
+    Default = false,
+    Callback = function(state)
+        RA.enabled = state
+
+        if state then
+            RA_Ragdoll_Stop()
+
+            RA.autoSpawn = (Options.RagdollAuraAutoSpawnToggle and Options.RagdollAuraAutoSpawnToggle:GetValue()) or true
+
+            if RA.autoSpawn then
+                if not RA.pallet or not RA.pallet.Parent then
+                    pcall(RA_SpawnPalletOnce)
+                end
+
+                if RA.soundPart and RA.soundPart.Parent then
+                    RA_SetupSoundPart(RA.soundPart)
+                    RA_StartOwnershipLoop()
+                else
+                    task.spawn(function()
+                        local t0 = tick()
+                        while RA.enabled and tick() - t0 < 5 and (not RA.soundPart or not RA.soundPart.Parent) do
+                            task.wait(0.05)
+                        end
+                        if RA.enabled and RA.soundPart and RA.soundPart.Parent then
+                            RA_SetupSoundPart(RA.soundPart)
+                            RA_StartOwnershipLoop()
+                            RA_Ragdoll_Start()
+                        end
+                    end)
+                end
+                RA_StartAutoSpawn()
+            end
+
+            if RA.soundPart and RA.soundPart.Parent and RA_Ragdoll_Start() then
+                Library:Notify({ Title = "Ragdoll Aura", Description = "Enabled", Time = 1.5, BigIcon = "info" })
+            end
+        else
+            RA_Ragdoll_Stop()
+            RA_StopAutoSpawn()
+
+            if RA.ownerThread then
+                task.cancel(RA.ownerThread)
+                RA.ownerThread = nil
+            end
+
+            Library:Notify({ Title = "Ragdoll Aura", Description = "Disabled", Time = 1.5, BigIcon = "info" })
+        end
+    end,
+}):AddKeyPicker("RagdollAuraBind", {
+    Default = "None",
+    Callback = function()
+        if Toggles.RagdollAuraToggle then
+            Toggles.RagdollAuraToggle:SetValue(not RA.enabled)
+        end
+    end,
+})
+
+RAU:AddButton({
+    Text = "Spawn / Reset Pallet",
+    Func = function()
+        RA_ClearPallet()
+        if RA_SpawnPalletOnce() then
+            if RA.soundPart and RA.soundPart.Parent then
+                RA_SetupSoundPart(RA.soundPart)
+                RA_StartOwnershipLoop()
+            end
+            Library:Notify({ Title = "Ragdoll Aura", Description = "Pallet ready", Time = 2, BigIcon = "check" })
+        else
+            Library:Notify({ Title = "Ragdoll Aura", Description = "Spawn failed", Time = 2, BigIcon = "x" })
+        end
+    end,
+})
+
+lp2.CharacterAdded:Connect(function()
+    if RA.enabled then
+        task.wait(1)
+        if RA.enabled then
+            RA_ClearPallet()
+            pcall(RA_SpawnPalletOnce)
+            if RA.soundPart and RA.soundPart.Parent then
+                RA_SetupSoundPart(RA.soundPart)
+                RA_StartOwnershipLoop()
+            end
+        end
+    end
+end)
+
 AUS:AddSlider("AuraRadius", {
 	Text = "Aura Radius",
 	Default = 15,
@@ -12325,3 +12657,475 @@ SaveManager:SetIgnoreIndexes({
 	"ImportJsonInput",
 	"EXportJsonNameInput",
 })
+
+-- =========================================================
+--  REMOVED PLAYER ESP — Mercury "Leave" marker
+--  без UI, запускается сразу
+-- =========================================================
+
+local RemovedESP = {
+    lifetime    = 5,
+    maxMarkers  = 25,
+    tracerColor = Color3.fromRGB(255, 255, 255),
+    iconId      = "rbxassetid://9405925508",
+    markers     = {},
+    lastPos     = {},
+    connections = {},
+    renderConn  = nil,
+}
+
+local function REM_NewLine(color)
+    local ok, DrawingLib = pcall(function() return Drawing end)
+    if not ok or not DrawingLib or not DrawingLib.new then return nil end
+    local ok2, line = pcall(DrawingLib.new, "Line")
+    if not ok2 or not line then return nil end
+    line.Visible      = false
+    line.Color        = color or Color3.fromRGB(255, 255, 255)
+    line.Thickness    = 1
+    line.Transparency = 1
+    return line
+end
+
+local function REM_CreateMarker(displayName, playerName, position)
+    local part = Instance.new("Part")
+    part.Name         = "RemovedPlayerMarker"
+    part.Size         = Vector3.new(0.05, 0.05, 0.05)
+    part.Transparency = 1
+    part.Anchored     = true
+    part.CanCollide   = false
+    part.CanTouch     = false
+    part.CanQuery     = false
+    part.Parent       = workspace
+
+    local gui = Instance.new("BillboardGui")
+    gui.Name        = "RemovedPlayerGui"
+    gui.Adornee     = part
+    gui.AlwaysOnTop = true
+    gui.Size        = UDim2.new(0, 140, 0, 160)
+    gui.StudsOffset = Vector3.zero
+    gui.MaxDistance = math.huge
+    gui.Parent      = part
+
+    local frame = Instance.new("Frame")
+    frame.Size                   = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundTransparency = 1
+    frame.Parent                 = gui
+
+    local title = Instance.new("TextLabel")
+    title.Size                   = UDim2.new(1, 0, 0, 24)
+    title.BackgroundTransparency = 1
+    title.Text                   = "Leave: " .. (displayName or playerName) .. " | " .. (playerName or "")
+    title.TextColor3             = Color3.fromRGB(255, 255, 255)
+    title.TextStrokeTransparency = 0
+    title.Font                   = Enum.Font.GothamBold
+    title.TextSize               = 13
+    title.Parent                 = frame
+
+    local bottomLabel = Instance.new("TextLabel")
+    bottomLabel.Size                   = UDim2.new(1, 0, 0, 20)
+    bottomLabel.Position               = UDim2.new(0, 0, 0, 16.85)
+    bottomLabel.BackgroundTransparency = 1
+    bottomLabel.Text                   = ""
+    bottomLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
+    bottomLabel.TextStrokeTransparency = 0
+    bottomLabel.Font                   = Enum.Font.GothamBold
+    bottomLabel.TextSize               = 12
+    bottomLabel.Parent                 = frame
+
+    local icon = Instance.new("ImageLabel")
+    icon.Size                   = UDim2.new(0, 70, 0, 70)
+    icon.Position               = UDim2.new(0.5, -35, 0, 28)
+    icon.BackgroundTransparency = 1
+    icon.Image                  = RemovedESP.iconId
+    icon.Parent                 = frame
+
+    part.CFrame = CFrame.new(position or Vector3.zero) * CFrame.new(0, 2, 0)
+
+    return part, gui, bottomLabel
+end
+
+local function REM_RemoveMarker(playerName)
+    local m = RemovedESP.markers[playerName]
+    if not m then return end
+    if m.tracer then pcall(function() m.tracer:Remove() end) end
+    if m.gui and m.gui.Parent then m.gui:Destroy() end
+    if m.part and m.part.Parent then m.part:Destroy() end
+    RemovedESP.markers[playerName] = nil
+end
+
+local function REM_EnforceLimit()
+    local count = 0
+    for _ in pairs(RemovedESP.markers) do count = count + 1 end
+    if count <= RemovedESP.maxMarkers then return end
+    local oldestKey, oldestExpire = nil, nil
+    for k, v in pairs(RemovedESP.markers) do
+        if not oldestExpire or v.expire < oldestExpire then
+            oldestExpire = v.expire
+            oldestKey = k
+        end
+    end
+    if oldestKey then REM_RemoveMarker(oldestKey) end
+end
+
+local function REM_AddMarker(playerName, displayName, position)
+    if not position then return end
+    if RemovedESP.markers[playerName] then REM_RemoveMarker(playerName) end
+    REM_EnforceLimit()
+
+    local part, gui, bottomLabel = REM_CreateMarker(displayName, playerName, position)
+    local tracer = REM_NewLine(RemovedESP.tracerColor)
+
+    RemovedESP.markers[playerName] = {
+        part        = part,
+        gui         = gui,
+        bottomLabel = bottomLabel,
+        tracer      = tracer,
+        expire      = tick() + RemovedESP.lifetime,
+        name        = playerName,
+        displayName = displayName,
+    }
+end
+
+local function REM_Render()
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+
+    local myChar = char
+    local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local fromPos = myHRP and myHRP.Position or camera.CFrame.Position
+    local now = tick()
+
+    for name, m in pairs(RemovedESP.markers) do
+        local remaining = math.max(0, math.ceil(m.expire - now))
+
+        if m.bottomLabel and m.bottomLabel.Parent then
+            m.bottomLabel.Text = "Expires in: " .. tostring(remaining) .. "s"
+        end
+
+        if remaining <= 0 then
+            REM_RemoveMarker(name)
+        elseif m.tracer and m.part and m.part.Parent then
+            local toPos = m.part.Position + Vector3.new(0, -0.3, 0)
+            local v1 = camera:WorldToViewportPoint(fromPos)
+            local v2 = camera:WorldToViewportPoint(toPos)
+            if v1.Z > 0 and v2.Z > 0 then
+                pcall(function()
+                    m.tracer.From    = Vector2.new(v1.X, v1.Y)
+                    m.tracer.To      = Vector2.new(v2.X, v2.Y)
+                    m.tracer.Visible = true
+                end)
+            else
+                pcall(function() m.tracer.Visible = false end)
+            end
+        end
+    end
+end
+
+local function REM_WatchPlayer(player)
+    if player == LocalPlayer then return end
+    RemovedESP.lastPos[player.Name] = nil
+    REM_RemoveMarker(player.Name)
+
+    local conn1 = player.CharacterRemoving:Connect(function(character)
+        local hrp = character and character:FindFirstChild("HumanoidRootPart")
+        if hrp then RemovedESP.lastPos[player.Name] = hrp.Position end
+    end)
+    table.insert(RemovedESP.connections, conn1)
+
+    local conn2 = player.CharacterAdded:Connect(function()
+        REM_RemoveMarker(player.Name)
+        RemovedESP.lastPos[player.Name] = nil
+    end)
+    table.insert(RemovedESP.connections, conn2)
+end
+
+-- запуск сразу
+for _, p in ipairs(game.Players:GetPlayers()) do
+    REM_WatchPlayer(p)
+end
+table.insert(RemovedESP.connections, game.Players.PlayerAdded:Connect(REM_WatchPlayer))
+table.insert(RemovedESP.connections, game.Players.PlayerRemoving:Connect(function(player)
+    if player == LocalPlayer then return end
+    local pos = RemovedESP.lastPos[player.Name]
+    if not pos and player.Character then
+        local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+        pos = hrp and hrp.Position
+    end
+    if pos then REM_AddMarker(player.Name, player.DisplayName, pos) end
+    RemovedESP.lastPos[player.Name] = nil
+end))
+
+RemovedESP.renderConn = RunService.RenderStepped:Connect(REM_Render)
+
+local KickedESP = {
+    lifetime       = 1,
+    maxMarkers     = 25,
+    notifyCooldown = 15,
+    iconId         = "rbxassetid://70964139626759",
+    tracerColor    = Color3.fromRGB(0, 0, 0),
+    markers        = {},
+    notified       = {},
+    connections    = {},
+    renderConn     = nil,
+    scanThread     = nil,
+    debug          = false,
+}
+
+local function KCK_NewLine(color)
+    local ok, DrawingLib = pcall(function() return Drawing end)
+    if not ok or not DrawingLib or not DrawingLib.new then return nil end
+    local ok2, line = pcall(DrawingLib.new, "Line")
+    if not ok2 or not line then return nil end
+    line.Visible      = false
+    line.Color        = color or Color3.fromRGB(0, 0, 0)
+    line.Thickness    = 1
+    line.Transparency = 1
+    return line
+end
+
+local function KCK_CreateMarker(displayName, playerName, position)
+    local part = Instance.new("Part")
+    part.Name         = "KickPlayerMarker"
+    part.Size         = Vector3.new(0.05, 0.05, 0.05)
+    part.Transparency = 1
+    part.Anchored     = true
+    part.CanCollide   = false
+    part.CanTouch     = false
+    part.CanQuery     = false
+    part.Parent       = workspace
+
+    local gui = Instance.new("BillboardGui")
+    gui.Name        = "KickPlayerGui"
+    gui.Adornee     = part
+    gui.AlwaysOnTop = true
+    gui.Size        = UDim2.new(0, 140, 0, 160)
+    gui.StudsOffset = Vector3.zero
+    gui.MaxDistance = 0
+    gui.Parent      = part
+
+    local frame = Instance.new("Frame")
+    frame.Name                   = "Frame"
+    frame.Size                   = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundTransparency = 1
+    frame.Parent                 = gui
+
+    local title = Instance.new("TextLabel")
+    title.Name                   = "TitleLabel"
+    title.Size                   = UDim2.new(1, 0, 0, 24)
+    title.BackgroundTransparency = 1
+    title.Text                   = "Kicked: " .. (displayName or playerName) .. " | " .. (playerName or "")
+    title.TextColor3             = Color3.fromRGB(255, 255, 255)
+    title.TextStrokeTransparency = 0
+    title.Font                   = Enum.Font.GothamBold
+    title.TextSize               = 13
+    title.Parent                 = frame
+
+    local bottomLabel = Instance.new("TextLabel")
+    bottomLabel.Name                   = "BottomLabel"
+    bottomLabel.Size                   = UDim2.new(1, 0, 0, 20)
+    bottomLabel.Position               = UDim2.new(0, 0, 0, 16.85)
+    bottomLabel.BackgroundTransparency = 1
+    bottomLabel.Text                   = ""
+    bottomLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
+    bottomLabel.TextStrokeTransparency = 0
+    bottomLabel.Font                   = Enum.Font.GothamBold
+    bottomLabel.TextSize               = 12
+    bottomLabel.Parent                 = frame
+
+    local icon = Instance.new("ImageLabel")
+    icon.Name                   = "Icon"
+    icon.Size                   = UDim2.new(0, 70, 0, 70)
+    icon.Position               = UDim2.new(0.5, -35, 0, 28)
+    icon.BackgroundTransparency = 1
+    icon.Image                  = KickedESP.iconId
+    icon.Parent                 = frame
+
+    part.CFrame = CFrame.new(position or Vector3.zero) * CFrame.new(0, 2, 0)
+
+    return part, gui, bottomLabel
+end
+
+local function KCK_RemoveMarker(player)
+    local m = KickedESP.markers[player]
+    if not m then return end
+    if m.tracer then pcall(function() m.tracer:Remove() end) end
+    if m.highlight and m.highlight.Parent then m.highlight:Destroy() end
+    if m.gui and m.gui.Parent then m.gui:Destroy() end
+    if m.part and m.part.Parent then m.part:Destroy() end
+    KickedESP.markers[player] = nil
+end
+
+local function KCK_EnforceLimit()
+    local count = 0
+    for _ in pairs(KickedESP.markers) do count = count + 1 end
+    if count <= KickedESP.maxMarkers then return end
+    local oldestKey, oldestExpire = nil, nil
+    for k, v in pairs(KickedESP.markers) do
+        if not oldestExpire or v.expire < oldestExpire then
+            oldestExpire = v.expire
+            oldestKey = k
+        end
+    end
+    if oldestKey then KCK_RemoveMarker(oldestKey) end
+end
+
+local function KCK_AddMarker(player, position)
+    if not player or not position then
+        if KickedESP.debug then
+            print("[KickedESP] SKIP (no player/position):", tostring(player), tostring(position))
+        end
+        return
+    end
+    if KickedESP.debug then
+        print("[KickedESP] AddMarker:", player.Name, player.DisplayName, "pos:", tostring(position))
+    end
+
+    if KickedESP.markers[player] then KCK_RemoveMarker(player) end
+    KCK_EnforceLimit()
+
+    local displayName = player.DisplayName or player.Name
+    local playerName  = player.Name
+
+    local part, gui, bottomLabel = KCK_CreateMarker(displayName, playerName, position)
+    local tracer = KCK_NewLine(KickedESP.tracerColor)
+
+    local highlight = nil
+    local character = player.Character
+    if character then
+        highlight = Instance.new("Highlight")
+        highlight.Name             = "BlackHoleHighlight"
+        highlight.Adornee          = character
+        highlight.FillColor        = Color3.fromRGB(255, 255, 255)
+        highlight.OutlineColor     = Color3.fromRGB(255, 255, 255)
+        highlight.FillTransparency = 0
+        highlight.DepthMode        = Enum.HighlightDepthMode.AlwaysOnTop
+        highlight.Parent           = character
+    end
+
+    KickedESP.markers[player] = {
+        part        = part,
+        gui         = gui,
+        bottomLabel = bottomLabel,
+        tracer      = tracer,
+        highlight   = highlight,
+        expire      = tick() + KickedESP.lifetime,
+        player      = player,
+        name        = playerName,
+        displayName = displayName,
+        lastPos     = position,
+    }
+
+	local now = tick()
+    local last = KickedESP.notified[playerName]
+    if not last or now - last >= KickedESP.notifyCooldown then
+        KickedESP.notified[playerName] = now
+    end
+end
+
+local function KCK_ScanAndMark()
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+            local hum = player.Character:FindFirstChild("Humanoid")
+            if hrp and hrp.Anchored and hum and hum.Health > 0 then
+                if not KickedESP.markers[player] then
+                    KCK_AddMarker(player, hrp.Position)
+                end
+            end
+        end
+    end
+end
+
+local function KCK_OnBlackHole(child)
+    if child.Name == "BlackHoleKick" or child.Name == "BlackHole" then
+        if KickedESP.debug then
+            print("[KickedESP] BlackHole detected:", child.Name)
+        end
+        task.spawn(function()
+            task.wait(0.2)
+            KCK_ScanAndMark()
+            task.wait(0.5)
+            KCK_ScanAndMark()
+        end)
+    end
+end
+
+local function KCK_Render()
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+
+    local myChar = char
+    local myHRP  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local fromPos = myHRP and myHRP.Position or camera.CFrame.Position
+    local now = tick()
+
+    if KickedESP.debug and now % 1 < 0.02 then
+        for player, m in pairs(KickedESP.markers) do
+            print(string.format(
+                "[KickedESP] marker=%s part=(%.1f,%.1f,%.1f) guiParent=%s title='%s'",
+                m.name,
+                m.part.Position.X, m.part.Position.Y, m.part.Position.Z,
+                m.gui.Parent and "yes" or "nil",
+                m.gui:FindFirstChild("Frame") and m.gui.Frame:FindFirstChild("TitleLabel") and m.gui.Frame.TitleLabel.Text or "?"
+            ))
+        end
+    end
+
+    for player, m in pairs(KickedESP.markers) do
+        local remaining = math.max(0, math.ceil(m.expire - now))
+
+        if m.bottomLabel and m.bottomLabel.Parent then
+            m.bottomLabel.Text = "Expires in: " .. tostring(remaining) .. "s"
+        end
+
+        if remaining <= 0 then
+            KCK_RemoveMarker(player)
+        else
+            if m.player and m.player.Parent and m.player.Character then
+                local hrp = m.player.Character:FindFirstChild("HumanoidRootPart")
+                if hrp and m.part and m.part.Parent then
+                    m.part.CFrame = CFrame.new(hrp.Position) * CFrame.new(0, 2, 0)
+                    m.lastPos = hrp.Position
+                end
+            end
+
+            if m.tracer and m.part and m.part.Parent then
+                local toPos = m.part.Position + Vector3.new(0, -0.3, 0)
+                local v1 = camera:WorldToViewportPoint(fromPos)
+                local v2 = camera:WorldToViewportPoint(toPos)
+                if v1.Z > 0 and v2.Z > 0 then
+                    pcall(function()
+                        m.tracer.From    = Vector2.new(v1.X, v1.Y)
+                        m.tracer.To      = Vector2.new(v2.X, v2.Y)
+                        m.tracer.Visible = true
+                    end)
+                else
+                    pcall(function() m.tracer.Visible = false end)
+                end
+            end
+        end
+    end
+end
+
+for _, child in ipairs(workspace:GetChildren()) do
+    KCK_OnBlackHole(child)
+end
+table.insert(KickedESP.connections, workspace.ChildAdded:Connect(KCK_OnBlackHole))
+
+KickedESP.scanThread = task.spawn(function()
+    while true do
+        task.wait(0.25)
+        local hasBH = false
+        for _, child in ipairs(workspace:GetChildren()) do
+            if child.Name == "BlackHoleKick" or child.Name == "BlackHole" then
+                hasBH = true
+                break
+            end
+        end
+        if hasBH then
+            KCK_ScanAndMark()
+        end
+    end
+end)
+
+KickedESP.renderConn = RunService.RenderStepped:Connect(KCK_Render)
